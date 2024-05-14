@@ -33,10 +33,14 @@ fn parse_line(input: &str) -> IResult<&str, &str> {
 }
 
 fn parse_line_usizes(input: &str) -> IResult<&str, Vec<usize>> {
+    let res = parse_line(input);
+    println!("{:?}", res);
     map(parse_line, |line| {
+        let v : Result<Vec<usize>, _> =
         line.split_whitespace()
-            .map(|x| x.parse::<usize>().unwrap())
-            .collect()
+            .map(|x| x.parse::<usize>())
+            .collect();
+        v.unwrap()
     })(input)
 }
 
@@ -58,10 +62,10 @@ fn parse_nodes_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)
     })(input)
 }
 
-fn parse_nodes_block(input: &str) -> IResult<&str, Vec<f64>> {
-    let res = parse_line_usizes(input);
-    
-}
+// fn parse_nodes_block(input: &str) -> IResult<&str, Vec<f64>> {
+//     let res = parse_line_usizes(input);
+
+// }
 
 #[cfg(test)]
 mod tests {
@@ -83,7 +87,8 @@ mod tests {
 
     #[test]
     fn test_parse_line_usizes() {
-        let line = "1 2 3 a 4 5 6 7 8 9 10\n";
+        let line = "1 2 3 4 5 6 7 8 9 10\n";
+        println!("{:?}", parse_line_usizes(line));
         let (rest, parsed) = parse_line_usizes(line).unwrap();
         assert_eq!(rest, "");
         assert_eq!(parsed, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
