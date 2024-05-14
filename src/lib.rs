@@ -17,14 +17,9 @@ impl Mesh2D {
 }
 
 use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_until},
-    character::complete::{alpha1, char, none_of},
-    combinator::{map, recognize},
-    multi::{many0, many1},
-    sequence::{delimited, preceded, terminated},
-    IResult, Parser,
+    branch::alt, bytes::complete::{tag, take_until}, character::complete::{alpha1, char, none_of}, combinator::{map, recognize}, error::ErrorKind::Tag, multi::{many0, many1}, sequence::{delimited, preceded, terminated}, Err, IResult, Parser
 };
+//use nom;
 
 /// all parser functions
 // parse a line of the gmsh string
@@ -35,13 +30,25 @@ fn parse_line(input: &str) -> IResult<&str, &str> {
 fn parse_line_usizes(input: &str) -> IResult<&str, Vec<usize>> {
     let res = parse_line(input);
     println!("{:?}", res);
-    map(parse_line, |line| {
-        let v : Result<Vec<usize>, _> =
-        line.split_whitespace()
-            .map(|x| x.parse::<usize>())
-            .collect();
-        v.unwrap()
-    })(input)
+    let res = res.unwrap();
+    let line = res.1;
+    let v: Result<Vec<usize>, _> = line
+        .split_whitespace()
+        .map(|x| x.parse::<usize>())
+        .collect();
+    // match v {
+    //     Ok(v) => Ok((res.0, v)),
+    //     Err(_) => Err(Err::Error((res.0, Tag))),
+    // }
+    Ok((res.0, v.unwrap()))
+    // println!("{:?}", res);
+    // map(parse_line, |line| {
+    //     let v : Result<Vec<usize>, _> =
+    //     line.split_whitespace()
+    //         .map(|x| x.parse::<usize>())
+    //         .collect();
+    //     v.unwrap()
+    // })(input)
 }
 
 fn parse_line_f64s(input: &str) -> IResult<&str, Vec<f64>> {
