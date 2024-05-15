@@ -1,10 +1,23 @@
 //use std::fs::File;
 /// rsmsh: a Rust library for managing DG meshes
 
+#[derive(Debug, Clone)]
+enum BoundaryType {
+    Dirichlet,  // imposed data
+    Neumann,   // wall
+    Elem(usize),  // internal boundary: element number
+}
+
 #[derive(Debug)]
 pub struct Mesh2D {
-    vertices: Vec<(f64, f64, f64)>,
-    elems: Vec<Vec<usize>>,
+    nbnodes: usize,  // number of nodes
+    nbelems: usize,  // number of elements
+    nbedges: usize,  // number of edges
+    vertices: Vec<(f64, f64, f64)>,    // list of vertices (x, y)
+    elems: Vec<Vec<usize>>,   // list of elements (list of nodes)
+    edges: Vec<[usize;3]>,  // list of edges (list of nodes)
+    elem2elem: Vec<Vec<BoundaryType>>, // elem->elem connectivity
+    edge2elem: Vec<(BoundaryType,BoundaryType)>,  // edge->elem connectivity
 }
 
 impl Mesh2D {
@@ -12,15 +25,87 @@ impl Mesh2D {
     pub fn new(gmshfile: &str) -> Mesh2D {
         let gmshdata: String = std::fs::read_to_string(gmshfile).unwrap();
         let (_, (vertices, elems)) = parse_nodes_elems(&gmshdata).unwrap();
-        Mesh2D { vertices, elems }
+        let (edges, elem2elem, edge2elem) = build_connectivity(&elems);
+        Mesh2D { nbnodes: vertices.len(), nbelems: elems.len(), nbedges: edges.len(), vertices, elems, edges, elem2elem, edge2elem }
     }
 
     // check several properties of the mesh
-    pub fn check(&self) -> bool {
+    pub fn check(&self) {
         // check that the mesh is 2D
         // check that all elements have six nodes
-        self.elems.iter().all(|x| x.len() == 7)
+        assert!(self.elems.iter().all(|x| x.len() == 6));
+        // check that all the nodes are used
+        let mut node_bis = vec![];
+        for elem in &self.elems {
+            for node in elem {
+                    node_bis.push(node);
+            }            
+        }
+        node_bis.sort();
+        node_bis.dedup();
+        assert_eq!(node_bis.len(), self.vertices.len());
     }
+}
+
+use std::collections::HashMap;
+use crate::BoundaryType::Elem;
+use crate::BoundaryType::Dirichlet;
+use crate::BoundaryType::Neumann;
+
+fn build_connectivity(elems: &Vec<Vec<usize>>) -> (Vec<[usize;3]>, Vec<Vec<BoundaryType>>, Vec<(BoundaryType,BoundaryType)>) {
+    let mut edge_hash: HashMap<(usize, usize), usize> = HashMap::new();
+    for (ie, elem) in elems.iter().enumerate() {
+        for i in 0..3 {
+            let i1 = elem[i];
+            let i2 = elem[(i+1)%3]; 
+            edge_hash.insert((i1, i2), ie);
+        }
+    }
+    let mut elem2elem = vec![];
+    for elem in elems {
+        let mut elem2elem_elem = vec![];
+        for i in 0..3 {
+            let i1 = elem[i];
+            let i2 = elem[(i+1)%3]; 
+            let ie = edge_hash.get(&(i2, i1));
+            match ie {
+                Some(ie) => elem2elem_elem.push(BoundaryType::Elem(*ie)),
+                None => elem2elem_elem.push(BoundaryType::Dirichlet),
+            }
+        }
+        elem2elem.push(elem2elem_elem);
+    }
+    let mut edge2elem = vec![];
+    let mut edges = vec![];
+    for (ie,elem) in elems.iter().enumerate() {
+        for i in 0..3 {
+            let i1 = elem[i];
+            let i2 = elem[(i+1)%3]; 
+            let i3 = elem[i+3];
+            // println!("{:?}", i3);
+            // assert!(elem.len()==6);
+            // assert!(i3==3 || i3==4 || i3==5);
+            let ivois = elem2elem[ie][i].clone();
+            match ivois {
+                Elem(ie2) => {
+                    if i1 < i2 {
+                        edge2elem.push((BoundaryType::Elem(ie), BoundaryType::Elem(ie2)));
+                        edges.push([i1, i2, i3]);
+                        assert!(i3 != i1);
+                    }
+                }
+                Dirichlet => {
+                    edge2elem.push((BoundaryType::Elem(ie), BoundaryType::Dirichlet));
+                    edges.push([i1, i2, i3]);
+                }
+                Neumann => {
+                    edge2elem.push((BoundaryType::Elem(ie), BoundaryType::Neumann));
+                    edges.push([i1, i2, i3]);
+                }
+            }
+        }
+    }
+    (edges, elem2elem, edge2elem)
 }
 
 use nom::{
