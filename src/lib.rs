@@ -1,33 +1,42 @@
-use std::fs::File;
+//use std::fs::File;
 /// rsmsh: a Rust library for managing DG meshes
 
-struct Mesh2D {
-    vertices: Vec<f64>,
-    edges: Vec<usize>,
+#[derive(Debug)]
+pub struct Mesh2D {
+    vertices: Vec<(f64, f64, f64)>,
+    elems: Vec<Vec<usize>>,
 }
 
 impl Mesh2D {
     // read the data in a gmsh file or return an error
-    fn new(gmshfile: &str) -> Result<Mesh2D, std::io::Error> {
-        let mut vertices = Vec::new();
-        let mut edges = Vec::new();
-        let gmshdata: String = std::fs::read_to_string(gmshfile)?;
-        Ok(Mesh2D { vertices, edges })
+    pub fn new(gmshfile: &str) -> Mesh2D {
+        let gmshdata: String = std::fs::read_to_string(gmshfile).unwrap();
+        let (_, (vertices, elems)) = parse_nodes_elems(&gmshdata).unwrap();
+        Mesh2D { vertices, elems }
+    }
+
+    // check several properties of the mesh
+    pub fn check(&self) -> bool {
+        // check that the mesh is 2D
+        // check that all elements have six nodes
+        self.elems.iter().all(|x| x.len() == 7)
     }
 }
 
 use nom::{
-    branch::alt,
+    //branch::alt,
     bytes::complete::{tag, take_until},
-    character::complete::{alpha1, char, none_of},
-    combinator::{map, recognize},
+    //character::complete::{alpha1, char, none_of},
+    combinator::map,
     error::{
         Error,
         ErrorKind::{self, Tag},
     },
     multi::{fold_many_m_n, many0, many1},
     sequence::{delimited, preceded, terminated},
-    Err, IResult, Parser,
+    Err,
+    IResult,
+    Parser,
 };
 //use nom;
 
@@ -89,7 +98,7 @@ fn parse_nodes_block_header(input: &str) -> IResult<&str, (usize, usize, usize, 
     })(input)
 }
 
-fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
+fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64, f64, f64)>)> {
     let (rest, (_, _, _, nbnodes)) = parse_nodes_block_header(input)?;
     let (rest, nodenum) = fold_many_m_n(
         nbnodes,
@@ -105,7 +114,7 @@ fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64
         nbnodes,
         nbnodes,
         parse_line_f64s,
-        Vec::<(f64,f64,f64)>::new,
+        Vec::<(f64, f64, f64)>::new,
         |mut acc, item| {
             acc.push((item[0], item[1], item[2]));
             acc
@@ -114,14 +123,14 @@ fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64
     Ok((rest, (nodenum, nodecoords)))
 }
 
-fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
-    let (rest, _) = preceded(take_until("$Nodes\n"),tag("$Nodes\n"))(input)?;
+fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64, f64, f64)>)> {
+    let (rest, _) = preceded(take_until("$Nodes\n"), tag("$Nodes\n"))(input)?;
     let (rest, (nbblocks, _, _, _)) = parse_nodes_header(rest)?;
     let (rest, (num, coord)) = fold_many_m_n(
         nbblocks,
         nbblocks,
-        parse_nodes_block, || 
-        (Vec::<usize>::new(), Vec::<(f64,f64,f64)>::new()),
+        parse_nodes_block,
+        || (Vec::<usize>::new(), Vec::<(f64, f64, f64)>::new()),
         |(mut accnum, mut acccoord), (num, coord)| {
             accnum.extend(num);
             acccoord.extend(coord);
@@ -155,11 +164,12 @@ fn parse_elems_block_header(input: &str) -> IResult<&str, (usize, usize, usize, 
 fn parse_elems_block(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
     let (rest, (_, _, elem_block_type, nbelems)) = parse_elems_block_header(input)?;
     let elem_type = 9; // only keep order 2 triangles
-    println!("{:?}", elem_block_type);
+    //println!("{:?}", elem_block_type);
     let (rest, elem) = fold_many_m_n(
         nbelems,
         nbelems,
-        parse_line_usizes,|| vec![],
+        parse_line_usizes,
+        || vec![],
         |mut acc, item| {
             if elem_block_type == elem_type {
                 acc.push(item);
@@ -171,12 +181,13 @@ fn parse_elems_block(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
 }
 
 fn parse_elems(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
-    let (rest, _) = preceded(take_until("$Elements\n"),tag("$Elements\n"))(input)?;
+    let (rest, _) = preceded(take_until("$Elements\n"), tag("$Elements\n"))(input)?;
     let (rest, (nbblocks, _, _, _)) = parse_elems_header(rest)?;
     let (rest, elem) = fold_many_m_n(
         nbblocks,
         nbblocks,
-        parse_elems_block, || vec![],
+        parse_elems_block,
+        || vec![],
         |mut acc, item| {
             acc.extend(item);
             acc
@@ -186,16 +197,21 @@ fn parse_elems(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
     Ok((rest, elem))
 }
 
-
+fn parse_nodes_elems(input: &str) -> IResult<&str, (Vec<(f64, f64, f64)>, Vec<Vec<usize>>)> {
+    let (rest, (num, coord)) = parse_nodes(input)?;
+    let (rest, elem) = parse_elems(rest)?;
+    Ok((rest, (coord, elem)))
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test_mesh2d() {
-        let mesh = Mesh2D::new("geo/square.msh").unwrap();
+        let mesh = Mesh2D::new("geo/square.msh");
+        println!("{:?}", mesh);
         assert_eq!(mesh.vertices.len(), 0);
-        assert_eq!(mesh.edges.len(), 0);
+        assert_eq!(mesh.elems.len(), 0);
     }
 
     #[test]
@@ -250,7 +266,7 @@ mod tests {
                      0 0 0
                      1 0 0
 "#;
-        let (rest, (num,coord)) = parse_nodes_block(line).unwrap();
+        let (rest, (num, coord)) = parse_nodes_block(line).unwrap();
         println!("{:?}", num);
         println!("{:?}", coord);
         println!("{:?}", rest);
@@ -276,13 +292,16 @@ $Nodes
 $EndNodes
 boubou
 "#;
-        let (rest, (num,coord)) = parse_nodes(line).unwrap();
+        let (rest, (num, coord)) = parse_nodes(line).unwrap();
         println!("{:?}", num);
         println!("{:?}", coord);
         println!("{:?}", rest);
         assert_eq!(rest, "boubou\n");
         assert_eq!(num, vec![9, 10, 11]);
-        assert_eq!(coord, vec![(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0,1.0,0.0)]);
+        assert_eq!(
+            coord,
+            vec![(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)]
+        );
     }
 
     #[test]
@@ -311,7 +330,10 @@ boubou
         println!("{:?}", elem);
         println!("{:?}", rest);
         assert_eq!(rest, "");
-        assert_eq!(elem, vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]);
+        assert_eq!(
+            elem,
+            vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]
+        );
     }
 
     #[test]
@@ -331,6 +353,9 @@ boubou
         println!("{:?}", elem);
         println!("{:?}", rest);
         assert_eq!(rest, "boubou\n");
-        assert_eq!(elem, vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]);
+        assert_eq!(
+            elem,
+            vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]
+        );
     }
 }
