@@ -115,7 +115,8 @@ fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64
 }
 
 fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
-    let (rest, (nbblocks, _, _, _)) = parse_nodes_header(input)?;
+    let (rest, _) = preceded(take_until("$Nodes\n"),tag("$Nodes\n"))(input)?;
+    let (rest, (nbblocks, _, _, _)) = parse_nodes_header(rest)?;
     let (rest, (num, coord)) = fold_many_m_n(
         nbblocks,
         nbblocks,
@@ -127,6 +128,7 @@ fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
             (accnum, acccoord)
         },
     )(rest)?;
+    let (rest, _) = tag("$EndNodes\n")(rest)?;
     Ok((rest, (num, coord)))
 }
 
@@ -199,5 +201,31 @@ mod tests {
         assert_eq!(rest, "");
         assert_eq!(num, vec![9, 10]);
         assert_eq!(coord, vec![(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]);
+    }
+
+    #[test]
+    // to run this single test: cargo test  tests::test_parse_nodes -- --exact --nocapture
+    fn test_parse_nodes() {
+        let line = r#"bibi
+$Nodes
+2 0 2 0
+1 1 0 2
+9
+10
+0 0 0
+1 0 0
+1 1 0 1
+11
+1 1 0
+$EndNodes
+boubou
+"#;
+        let (rest, (num,coord)) = parse_nodes(line).unwrap();
+        println!("{:?}", num);
+        println!("{:?}", coord);
+        println!("{:?}", rest);
+        assert_eq!(rest, "boubou\n");
+        assert_eq!(num, vec![9, 10, 11]);
+        assert_eq!(coord, vec![(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0,1.0,0.0)]);
     }
 }
