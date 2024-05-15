@@ -132,6 +132,62 @@ fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
     Ok((rest, (num, coord)))
 }
 
+fn parse_elems_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
+    map(parse_line_usizes, |v| {
+        let numblocks = v[0];
+        let numelems = v[1];
+        let minelem = v[2];
+        let maxelem = v[3];
+        (v[0], v[1], v[2], v[3])
+    })(input)
+}
+
+fn parse_elems_block_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
+    map(parse_line_usizes, |v| {
+        let edim = v[0];
+        let etag = v[1];
+        let elem_type = v[2];
+        let nbelems = v[3];
+        (v[0], v[1], v[2], v[3])
+    })(input)
+}
+
+fn parse_elems_block(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
+    let (rest, (_, _, elem_block_type, nbelems)) = parse_elems_block_header(input)?;
+    let elem_type = 9; // only keep order 2 triangles
+    println!("{:?}", elem_block_type);
+    let (rest, elem) = fold_many_m_n(
+        nbelems,
+        nbelems,
+        parse_line_usizes,|| vec![],
+        |mut acc, item| {
+            if elem_block_type == elem_type {
+                acc.push(item);
+            }
+            acc
+        },
+    )(rest)?;
+    Ok((rest, elem))
+}
+
+fn parse_elems(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
+    let (rest, _) = preceded(take_until("$Elements\n"),tag("$Elements\n"))(input)?;
+    let (rest, (nbblocks, _, _, _)) = parse_elems_header(rest)?;
+    let (rest, elem) = fold_many_m_n(
+        nbblocks,
+        nbblocks,
+        parse_elems_block, || vec![],
+        |mut acc, item| {
+            acc.extend(item);
+            acc
+        },
+    )(rest)?;
+    let (rest, _) = tag("$EndElements\n")(rest)?;
+    Ok((rest, elem))
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,5 +283,54 @@ boubou
         assert_eq!(rest, "boubou\n");
         assert_eq!(num, vec![9, 10, 11]);
         assert_eq!(coord, vec![(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0,1.0,0.0)]);
+    }
+
+    #[test]
+    fn test_parse_elems_header() {
+        let line = "10 0 3 0\n";
+        let (rest, parsed) = parse_elems_header(line).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(parsed, (10, 0, 3, 0));
+    }
+
+    #[test]
+    fn test_parse_elems_block_header() {
+        let line = "1 1 0 4\n";
+        let (rest, parsed) = parse_elems_block_header(line).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(parsed, (1, 1, 0, 4));
+    }
+
+    #[test]
+    fn test_parse_elems_block() {
+        let line = r#"2 1 9 2
+        9 1 2 9 5 10 11 
+        10 4 1 9 8 11 12 
+"#;
+        let (rest, elem) = parse_elems_block(line).unwrap();
+        println!("{:?}", elem);
+        println!("{:?}", rest);
+        assert_eq!(rest, "");
+        assert_eq!(elem, vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]);
+    }
+
+    #[test]
+    // to run this single test: cargo test  tests::test_parse_elems -- --exact --nocapture
+    fn test_parse_elems() {
+        let line = r#"bibi
+$Elements
+2 0 2 0
+1 1 9 1
+9 1 2 9 5 10 11
+1 1 9 1
+10 4 1 9 8 11 12
+$EndElements
+boubou
+"#;
+        let (rest, elem) = parse_elems(line).unwrap();
+        println!("{:?}", elem);
+        println!("{:?}", rest);
+        assert_eq!(rest, "boubou\n");
+        assert_eq!(elem, vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]);
     }
 }
