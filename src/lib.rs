@@ -89,7 +89,7 @@ fn parse_nodes_block_header(input: &str) -> IResult<&str, (usize, usize, usize, 
     })(input)
 }
 
-fn parse_nodes_block(input: &str) -> IResult<&str, Vec<usize>> {
+fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
     let (rest, (_, _, _, nbnodes)) = parse_nodes_block_header(input)?;
     let (rest, nodenum) = fold_many_m_n(
         nbnodes,
@@ -101,7 +101,17 @@ fn parse_nodes_block(input: &str) -> IResult<&str, Vec<usize>> {
             acc
         },
     )(rest)?;
-    Ok((rest, nodenum))
+    let (rest, nodecoords) = fold_many_m_n(
+        nbnodes,
+        nbnodes,
+        parse_line_f64s,
+        Vec::<(f64,f64,f64)>::new,
+        |mut acc, item| {
+            acc.push((item[0], item[1], item[2]));
+            acc
+        },
+    )(rest)?;
+    Ok((rest, (nodenum, nodecoords)))
 }
 
 #[cfg(test)]
@@ -160,17 +170,18 @@ mod tests {
 
     #[test]
     fn test_parse_nodes_block() {
-        let line = r#"2 1 0 5
+        let line = r#"2 1 0 2
                       9  
                       10
-                      11
-                      12
-                      13
+                     0 0 0
+                     1 0 0
 "#;
-        let (rest, parsed) = parse_nodes_block(line).unwrap();
-        println!("{:?}", parsed);
+        let (rest, (num,coord)) = parse_nodes_block(line).unwrap();
+        println!("{:?}", num);
+        println!("{:?}", coord);
         println!("{:?}", rest);
         assert_eq!(rest, "");
-        assert_eq!(parsed, vec![9, 10, 11, 12, 13]);
+        assert_eq!(num, vec![9, 10]);
+        assert_eq!(coord, vec![(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]);
     }
 }
