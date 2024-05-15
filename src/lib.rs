@@ -172,7 +172,9 @@ fn parse_elems_block(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
         || vec![],
         |mut acc, item| {
             if elem_block_type == elem_type {
-                acc.push(item);
+                // remove first element of item
+                // and substract 1 to all elements
+                acc.push(item[1..].iter().map(|x| x - 1).collect());
             }
             acc
         },
@@ -210,8 +212,8 @@ mod tests {
     fn test_mesh2d() {
         let mesh = Mesh2D::new("geo/square.msh");
         println!("{:?}", mesh);
-        assert_eq!(mesh.vertices.len(), 0);
-        assert_eq!(mesh.elems.len(), 0);
+        assert_eq!(mesh.vertices.len(), 13);
+        assert_eq!(mesh.elems.len(), 4);
     }
 
     #[test]
@@ -332,7 +334,7 @@ boubou
         assert_eq!(rest, "");
         assert_eq!(
             elem,
-            vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]
+            vec![vec![0, 1, 8, 4, 9, 10], vec![3, 0, 8, 7, 10, 11]]
         );
     }
 
@@ -355,7 +357,7 @@ boubou
         assert_eq!(rest, "boubou\n");
         assert_eq!(
             elem,
-            vec![vec![9, 1, 2, 9, 5, 10, 11], vec![10, 4, 1, 9, 8, 11, 12]]
+            vec![vec![0, 1, 8, 4, 9, 10], vec![3, 0, 8, 7, 10, 11]]
         );
     }
 }
