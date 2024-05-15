@@ -17,7 +17,17 @@ impl Mesh2D {
 }
 
 use nom::{
-    branch::alt, bytes::complete::{tag, take_until}, character::complete::{alpha1, char, none_of}, combinator::{map, recognize}, error::ErrorKind::Tag, multi::{many0, many1}, sequence::{delimited, preceded, terminated}, Err, IResult, Parser, error::Error,error::ErrorKind,
+    branch::alt,
+    bytes::complete::{tag, take_until},
+    character::complete::{alpha1, char, none_of},
+    combinator::{map, recognize},
+    error::{
+        Error,
+        ErrorKind::{self, Tag},
+    },
+    multi::{fold_many_m_n, many0, many1},
+    sequence::{delimited, preceded, terminated},
+    Err, IResult, Parser,
 };
 //use nom;
 
@@ -45,11 +55,18 @@ fn parse_line_usizes(input: &str) -> IResult<&str, Vec<usize>> {
 }
 
 fn parse_line_f64s(input: &str) -> IResult<&str, Vec<f64>> {
-    map(parse_line, |line| {
-        line.split_whitespace()
-            .map(|x| x.parse::<f64>().unwrap())
-            .collect()
-    })(input)
+    let res = parse_line(input);
+    match res {
+        Ok((rest, line)) => {
+            let v: Result<Vec<f64>, _> =
+                line.split_whitespace().map(|x| x.parse::<f64>()).collect();
+            match v {
+                Ok(v) => Ok((rest, v)),
+                Err(_) => Err(nom::Err::Error(Error::new(input, ErrorKind::Tag))),
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn parse_nodes_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
@@ -62,10 +79,30 @@ fn parse_nodes_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)
     })(input)
 }
 
-// fn parse_nodes_block(input: &str) -> IResult<&str, Vec<f64>> {
-//     let res = parse_line_usizes(input);
+fn parse_nodes_block_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
+    map(parse_line_usizes, |v| {
+        let edim = v[0];
+        let etag = v[1];
+        let is_param = v[2];
+        let numnodes = v[3];
+        (v[0], v[1], v[2], v[3])
+    })(input)
+}
 
-// }
+fn parse_nodes_block(input: &str) -> IResult<&str, Vec<usize>> {
+    let (rest, (_, _, _, nbnodes)) = parse_nodes_block_header(input)?;
+    let (rest, nodenum) = fold_many_m_n(
+        nbnodes,
+        nbnodes,
+        parse_line_usizes,
+        Vec::<usize>::new,
+        |mut acc, item| {
+            acc.push(item[0]);
+            acc
+        },
+    )(rest)?;
+    Ok((rest, nodenum))
+}
 
 #[cfg(test)]
 mod tests {
@@ -111,5 +148,29 @@ mod tests {
         let (rest, parsed) = parse_nodes_header(line).unwrap();
         assert_eq!(rest, "");
         assert_eq!(parsed, (10, 0, 3, 0));
+    }
+
+    #[test]
+    fn test_parse_nodes_block_header() {
+        let line = "1 1 0 4\n";
+        let (rest, parsed) = parse_nodes_block_header(line).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(parsed, (1, 1, 0, 4));
+    }
+
+    #[test]
+    fn test_parse_nodes_block() {
+        let line = r#"2 1 0 5
+                      9  
+                      10
+                      11
+                      12
+                      13
+"#;
+        let (rest, parsed) = parse_nodes_block(line).unwrap();
+        println!("{:?}", parsed);
+        println!("{:?}", rest);
+        assert_eq!(rest, "");
+        assert_eq!(parsed, vec![9, 10, 11, 12, 13]);
     }
 }
