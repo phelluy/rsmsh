@@ -114,6 +114,22 @@ fn parse_nodes_block(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64
     Ok((rest, (nodenum, nodecoords)))
 }
 
+fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64,f64,f64)>)> {
+    let (rest, (nbblocks, _, _, _)) = parse_nodes_header(input)?;
+    let (rest, (num, coord)) = fold_many_m_n(
+        nbblocks,
+        nbblocks,
+        parse_nodes_block, || 
+        (Vec::<usize>::new(), Vec::<(f64,f64,f64)>::new()),
+        |(mut accnum, mut acccoord), (num, coord)| {
+            accnum.extend(num);
+            acccoord.extend(coord);
+            (accnum, acccoord)
+        },
+    )(rest)?;
+    Ok((rest, (num, coord)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
