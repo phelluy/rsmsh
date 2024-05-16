@@ -3,21 +3,21 @@
 
 #[derive(Debug, Clone)]
 enum BoundaryType {
-    Dirichlet,  // imposed data
-    Neumann,   // wall
-    Elem(usize),  // internal boundary: element number
+    Dirichlet,   // imposed data
+    Neumann,     // wall
+    Elem(usize), // internal boundary: element number
 }
 
 #[derive(Debug)]
 pub struct Mesh2D {
-    nbnodes: usize,  // number of nodes
-    nbelems: usize,  // number of elements
-    nbedges: usize,  // number of edges
-    vertices: Vec<(f64, f64, f64)>,    // list of vertices (x, y)
-    elems: Vec<Vec<usize>>,   // list of elements (list of nodes)
-    edges: Vec<[usize;3]>,  // list of edges (list of nodes)
-    elem2elem: Vec<Vec<BoundaryType>>, // elem->elem connectivity
-    edge2elem: Vec<(BoundaryType,BoundaryType)>,  // edge->elem connectivity
+    nbnodes: usize,                               // number of nodes
+    nbelems: usize,                               // number of elements
+    nbedges: usize,                               // number of edges
+    vertices: Vec<(f64, f64, f64)>,               // list of vertices (x, y)
+    elems: Vec<Vec<usize>>,                       // list of elements (list of nodes)
+    edges: Vec<[usize; 3]>,                       // list of edges (list of nodes)
+    elem2elem: Vec<Vec<BoundaryType>>,            // elem->elem connectivity
+    edge2elem: Vec<(BoundaryType, BoundaryType)>, // edge->elem connectivity
 }
 
 impl Mesh2D {
@@ -26,7 +26,16 @@ impl Mesh2D {
         let gmshdata: String = std::fs::read_to_string(gmshfile).unwrap();
         let (_, (vertices, elems)) = parse_nodes_elems(&gmshdata).unwrap();
         let (edges, elem2elem, edge2elem) = build_connectivity(&elems);
-        Mesh2D { nbnodes: vertices.len(), nbelems: elems.len(), nbedges: edges.len(), vertices, elems, edges, elem2elem, edge2elem }
+        Mesh2D {
+            nbnodes: vertices.len(),
+            nbelems: elems.len(),
+            nbedges: edges.len(),
+            vertices,
+            elems,
+            edges,
+            elem2elem,
+            edge2elem,
+        }
     }
 
     // check several properties of the mesh
@@ -38,8 +47,8 @@ impl Mesh2D {
         let mut node_bis = vec![];
         for elem in &self.elems {
             for node in elem {
-                    node_bis.push(node);
-            }            
+                node_bis.push(node);
+            }
         }
         node_bis.sort();
         node_bis.dedup();
@@ -47,17 +56,23 @@ impl Mesh2D {
     }
 }
 
-use std::collections::HashMap;
-use crate::BoundaryType::Elem;
 use crate::BoundaryType::Dirichlet;
+use crate::BoundaryType::Elem;
 use crate::BoundaryType::Neumann;
+use std::collections::HashMap;
 
-fn build_connectivity(elems: &Vec<Vec<usize>>) -> (Vec<[usize;3]>, Vec<Vec<BoundaryType>>, Vec<(BoundaryType,BoundaryType)>) {
+fn build_connectivity(
+    elems: &Vec<Vec<usize>>,
+) -> (
+    Vec<[usize; 3]>,
+    Vec<Vec<BoundaryType>>,
+    Vec<(BoundaryType, BoundaryType)>,
+) {
     let mut edge_hash: HashMap<(usize, usize), usize> = HashMap::new();
     for (ie, elem) in elems.iter().enumerate() {
         for i in 0..3 {
             let i1 = elem[i];
-            let i2 = elem[(i+1)%3]; 
+            let i2 = elem[(i + 1) % 3];
             edge_hash.insert((i1, i2), ie);
         }
     }
@@ -66,7 +81,7 @@ fn build_connectivity(elems: &Vec<Vec<usize>>) -> (Vec<[usize;3]>, Vec<Vec<Bound
         let mut elem2elem_elem = vec![];
         for i in 0..3 {
             let i1 = elem[i];
-            let i2 = elem[(i+1)%3]; 
+            let i2 = elem[(i + 1) % 3];
             let ie = edge_hash.get(&(i2, i1));
             match ie {
                 Some(ie) => elem2elem_elem.push(BoundaryType::Elem(*ie)),
@@ -77,11 +92,11 @@ fn build_connectivity(elems: &Vec<Vec<usize>>) -> (Vec<[usize;3]>, Vec<Vec<Bound
     }
     let mut edge2elem = vec![];
     let mut edges = vec![];
-    for (ie,elem) in elems.iter().enumerate() {
+    for (ie, elem) in elems.iter().enumerate() {
         for i in 0..3 {
             let i1 = elem[i];
-            let i2 = elem[(i+1)%3]; 
-            let i3 = elem[i+3];
+            let i2 = elem[(i + 1) % 3];
+            let i3 = elem[i + 3];
             // println!("{:?}", i3);
             // assert!(elem.len()==6);
             // assert!(i3==3 || i3==4 || i3==5);
@@ -249,7 +264,7 @@ fn parse_elems_block_header(input: &str) -> IResult<&str, (usize, usize, usize, 
 fn parse_elems_block(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
     let (rest, (_, _, elem_block_type, nbelems)) = parse_elems_block_header(input)?;
     let elem_type = 9; // only keep order 2 triangles
-    //println!("{:?}", elem_block_type);
+                       //println!("{:?}", elem_block_type);
     let (rest, elem) = fold_many_m_n(
         nbelems,
         nbelems,
