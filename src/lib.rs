@@ -73,6 +73,12 @@ impl Mesh2D {
                 }
             });
     }
+
+    // write the mesh in a gmsh file 
+    // with a possible DG field to plot
+    fn plot_gmsh(&self, filename: &str, field: Option<Vec<f64>>) {
+        todo!();
+    } 
 }
 
 use crate::BoundaryType::Dirichlet;
