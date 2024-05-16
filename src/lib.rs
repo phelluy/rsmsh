@@ -3,21 +3,23 @@
 
 #[derive(Debug, Clone)]
 enum BoundaryType {
-    Dirichlet,   // imposed data
-    Neumann,     // wall
-    Elem(usize), // internal boundary: element number
+    Dirichlet,      // imposed data
+    Neumann,        // wall
+    Elem(usize),    // internal boundary: elem number
+    LocEdge(usize), // local edge number
 }
 
 #[derive(Debug)]
 pub struct Mesh2D {
-    nbnodes: usize,                               // number of nodes
-    nbelems: usize,                               // number of elements
-    nbedges: usize,                               // number of edges
-    vertices: Vec<(f64, f64, f64)>,               // list of vertices (x, y)
-    elems: Vec<Vec<usize>>,                       // list of elements (list of nodes)
-    edges: Vec<[usize; 3]>,                       // list of edges (list of nodes)
-    elem2elem: Vec<Vec<BoundaryType>>,            // elem->elem connectivity
-    edge2elem: Vec<(BoundaryType, BoundaryType)>, // edge->elem connectivity
+    nbnodes: usize,                        // number of nodes
+    nbelems: usize,                        // number of elements
+    nbedges: usize,                        // number of edges
+    vertices: Vec<(f64, f64, f64)>,        // list of vertices (x, y)
+    elems: Vec<Vec<usize>>,                // list of elements (list of nodes)
+    edges: Vec<[usize; 3]>,                // list of edges (list of nodes)
+    elem2elem: Vec<Vec<BoundaryType>>,     // elem->elem connectivity
+    edge2elem: Vec<(usize, BoundaryType)>, // edge->elem connectivity
+    edge2edge: Vec<(usize, BoundaryType)>, // edge-> local edge connectivity
 }
 
 impl Mesh2D {
@@ -25,7 +27,7 @@ impl Mesh2D {
     pub fn new(gmshfile: &str) -> Mesh2D {
         let gmshdata: String = std::fs::read_to_string(gmshfile).unwrap();
         let (_, (vertices, elems)) = parse_nodes_elems(&gmshdata).unwrap();
-        let (edges, elem2elem, edge2elem) = build_connectivity(&elems);
+        let (edges, elem2elem, edge2elem, edge2edge) = build_connectivity(&elems);
         Mesh2D {
             nbnodes: vertices.len(),
             nbelems: elems.len(),
@@ -35,6 +37,7 @@ impl Mesh2D {
             edges,
             elem2elem,
             edge2elem,
+            edge2edge,
         }
     }
 
@@ -53,12 +56,29 @@ impl Mesh2D {
         node_bis.sort();
         node_bis.dedup();
         assert_eq!(node_bis.len(), self.vertices.len());
+        // check that edge2edge points to the correct local edges
+        (self.edge2edge.iter())
+            .zip(self.edge2elem.iter())
+            .for_each(|(e2e, e2elem)| {
+                let ie1 = e2elem.0;
+                if let Elem(ie2) = e2elem.1 {
+                    let iloc1 = e2e.0;
+                    if let LocEdge(iloc2) = e2e.1 {
+                        let a1 = self.elems[ie1][iloc1];
+                        let b1 = self.elems[ie1][(iloc1 + 1) % 3];
+                        let b2 = self.elems[ie2][iloc2];
+                        let a2 = self.elems[ie2][(iloc2 + 1) % 3];
+                        assert!(a1 == a2 && b1 == b2);
+                    }
+                }
+            });
     }
 }
 
 use crate::BoundaryType::Dirichlet;
 use crate::BoundaryType::Elem;
 use crate::BoundaryType::Neumann;
+use crate::BoundaryType::LocEdge;
 use std::collections::HashMap;
 
 fn build_connectivity(
@@ -66,7 +86,8 @@ fn build_connectivity(
 ) -> (
     Vec<[usize; 3]>,
     Vec<Vec<BoundaryType>>,
-    Vec<(BoundaryType, BoundaryType)>,
+    Vec<(usize, BoundaryType)>,
+    Vec<(usize, BoundaryType)>,
 ) {
     let mut edge_hash: HashMap<(usize, usize), usize> = HashMap::new();
     for (ie, elem) in elems.iter().enumerate() {
@@ -92,6 +113,7 @@ fn build_connectivity(
     }
     let mut edge2elem = vec![];
     let mut edges = vec![];
+    let mut edge2edge = vec![];
     for (ie, elem) in elems.iter().enumerate() {
         for i in 0..3 {
             let i1 = elem[i];
@@ -104,23 +126,34 @@ fn build_connectivity(
             match ivois {
                 Elem(ie2) => {
                     if i1 < i2 {
-                        edge2elem.push((BoundaryType::Elem(ie), BoundaryType::Elem(ie2)));
+                        edge2elem.push((ie, BoundaryType::Elem(ie2)));
                         edges.push([i1, i2, i3]);
-                        assert!(i3 != i1);
+                        // find local edge number in ie2: in ie2, the edge is i2->i1
+                        // while in ie, the edge is i1->i2
+                        let mut iloc = 0;
+                        while (elems[ie2][iloc] != i2) || (elems[ie2][(iloc + 1) % 3] != i1) {
+                            iloc += 1;
+                        }
+                        assert!(iloc < 3);
+                        edge2edge.push((i, BoundaryType::LocEdge(iloc))); // left edge is i
                     }
                 }
                 Dirichlet => {
-                    edge2elem.push((BoundaryType::Elem(ie), BoundaryType::Dirichlet));
+                    edge2elem.push((ie, BoundaryType::Dirichlet));
                     edges.push([i1, i2, i3]);
+                    edge2edge.push((i, BoundaryType::Dirichlet));
                 }
                 Neumann => {
-                    edge2elem.push((BoundaryType::Elem(ie), BoundaryType::Neumann));
+                    edge2elem.push((ie, BoundaryType::Neumann));
                     edges.push([i1, i2, i3]);
+                }
+                _ => {
+                    panic!("Unexpected boundary type")
                 }
             }
         }
     }
-    (edges, elem2elem, edge2elem)
+    (edges, elem2elem, edge2elem, edge2edge)
 }
 
 use nom::{
