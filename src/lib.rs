@@ -88,6 +88,17 @@ impl Mesh2D {
         }
 
         s.push_str("$EndElements\n");
+        // save values
+        fn toplot(x: f64, y: f64) -> f64 {
+            x * x + y * y
+        }
+
+        s.push_str(format!("$NodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n", nbnodes).as_str());
+        for (i, (x, y, _)) in self.vertices.iter().enumerate() {
+            s.push_str(&format!("{} {}\n", i + 1, toplot(*x, *y)));
+        }
+        s.push_str("$EndNodeData\n");
+
         file.write_all(s.as_bytes()).unwrap();
     }
 
