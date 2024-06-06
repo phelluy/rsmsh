@@ -93,11 +93,19 @@ impl Mesh2D {
             x * x + y * y
         }
 
-        s.push_str(format!("$NodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n", nbnodes).as_str());
-        for (i, (x, y, _)) in self.vertices.iter().enumerate() {
-            s.push_str(&format!("{} {}\n", i + 1, toplot(*x, *y)));
+        // s.push_str(format!("$NodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n", nbnodes).as_str());
+        // for (i, (x, y, _)) in self.vertices.iter().enumerate() {
+        //     s.push_str(&format!("{} {}\n", i + 1, toplot(*x, *y)));
+        // }
+        // s.push_str("$EndNodeData\n");
+        s.push_str(format!("$ElementNodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n", nbtri).as_str());
+        for (i, elem) in self.elems.iter().enumerate() {
+            s.push_str(&format!("{} 6 ", i + 1));
+            for node in elem {
+                s.push_str(&format!("{} ", toplot(self.vertices[*node].0, self.vertices[*node].1)));
+            }
+            s.push_str("\n");
         }
-        s.push_str("$EndNodeData\n");
 
         file.write_all(s.as_bytes()).unwrap();
     }
