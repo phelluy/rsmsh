@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn test_save_gmsh() {
-        let mut mesh = Mesh2D::new("geo/square.msh");
+        let mut mesh = Mesh2D::new("geo/square4.msh");
         mesh.save_gmsh2("geo/square_test.msh");
     }
 
