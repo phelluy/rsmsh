@@ -9,6 +9,12 @@ enum BoundaryType {
     LocEdge(usize), // local edge number
 }
 
+#[derive(Debug, Clone)]
+enum PeriodicDir {
+    None,
+    Some(f64),
+}
+
 #[derive(Debug)]
 pub struct Mesh2D {
     nbnodes: usize,                        // number of nodes
@@ -21,6 +27,8 @@ pub struct Mesh2D {
     edge2elem: Vec<(usize, BoundaryType)>, // edge->elem connectivity
     edge2edge: Vec<(usize, BoundaryType)>, // edge-> local edge connectivity
 }
+
+use std::io::Write;
 
 impl Mesh2D {
     // read the data in a gmsh file or return an error
@@ -39,6 +47,48 @@ impl Mesh2D {
             edge2elem,
             edge2edge,
         }
+    }
+
+    pub fn make_periodic(&mut self, dir: PeriodicDir) {}
+
+    // save the mesh in a gmsh file format legacy 2
+    pub fn save_gmsh2(&self, filename: &str) {
+        let mut file = std::fs::File::create(filename).unwrap();
+        let mut s = String::new();
+        s.push_str("$MeshFormat\n2.2 0 8\n$EndMeshFormat\n");
+        s.push_str("$Nodes\n");
+        let nbnodes = self.vertices.len();
+        s.push_str(&format!("{}\n", nbnodes));
+        for (i, (x, y, _)) in self.vertices.iter().enumerate() {
+            s.push_str(&format!("{} {} {} 0\n", i + 1, x, y));
+        }
+        s.push_str("$EndNodes\n");
+
+        s.push_str("$Elements\n");
+        let nbtri = self.elems.len();
+        let nblines = self.edges.len();
+        let nbelems = nbtri + nblines;
+        // header
+        s.push_str(&format!("{}\n", nbelems));
+        // block of lines
+        for (i, edge) in self.edges.iter().enumerate() {
+            s.push_str(&format!("{} 8 0 ", i + 1 + nbtri));
+            for node in edge {
+                s.push_str(&format!("{} ", node + 1));
+            }
+            s.push_str("\n");
+        }
+        // block of triangles
+        for (i, elem) in self.elems.iter().enumerate() {
+            s.push_str(&format!("{} 9 0 ", i + 1));
+            for node in elem {
+                s.push_str(&format!("{} ", node + 1));
+            }
+            s.push_str("\n");
+        }
+
+        s.push_str("$EndElements\n");
+        file.write_all(s.as_bytes()).unwrap();
     }
 
     // check several properties of the mesh
@@ -74,17 +124,17 @@ impl Mesh2D {
             });
     }
 
-    // write the mesh in a gmsh file 
+    // write the mesh in a gmsh file
     // with a possible DG field to plot
     fn plot_gmsh(&self, filename: &str, field: Option<Vec<f64>>) {
         todo!();
-    } 
+    }
 }
 
 use crate::BoundaryType::Dirichlet;
 use crate::BoundaryType::Elem;
-use crate::BoundaryType::Neumann;
 use crate::BoundaryType::LocEdge;
+use crate::BoundaryType::Neumann;
 use std::collections::HashMap;
 
 fn build_connectivity(
@@ -353,6 +403,12 @@ mod tests {
         println!("{:?}", mesh);
         assert_eq!(mesh.vertices.len(), 13);
         assert_eq!(mesh.elems.len(), 4);
+    }
+
+    #[test]
+    fn test_save_gmsh() {
+        let mut mesh = Mesh2D::new("geo/square.msh");
+        mesh.save_gmsh2("geo/square_test.msh");
     }
 
     #[test]
