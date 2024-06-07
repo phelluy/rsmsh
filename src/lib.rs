@@ -9,12 +9,6 @@ enum BoundaryType {
     LocEdge(usize), // local edge number
 }
 
-#[derive(Debug, Clone)]
-enum PeriodicDir {
-    None,
-    Some(f64),
-}
-
 #[derive(Debug)]
 pub struct Mesh2D {
     nbnodes: usize,                        // number of nodes
@@ -26,9 +20,15 @@ pub struct Mesh2D {
     elem2elem: Vec<Vec<BoundaryType>>,     // elem->elem connectivity
     edge2elem: Vec<(usize, BoundaryType)>, // edge->elem connectivity
     edge2edge: Vec<(usize, BoundaryType)>, // edge-> local edge connectivity
+    length: Vec<f64>,                      // length of edges
+    surface: Vec<f64>,                     // surface of elements
+    normal: Vec<(f64, f64)>,               // unit normal to edges
+    bounding_box: (f64, f64, f64, f64),    // bounding box
+    min_length: f64,                       // minimum edge length
 }
 
 use std::io::Write;
+use std::vec;
 
 impl Mesh2D {
     // read the data in a gmsh file or return an error
@@ -36,6 +36,50 @@ impl Mesh2D {
         let gmshdata: String = std::fs::read_to_string(gmshfile).unwrap();
         let (_, (vertices, elems)) = parse_nodes_elems(&gmshdata).unwrap();
         let (edges, elem2elem, edge2elem, edge2edge) = build_connectivity(&elems);
+        let mut length = vec![];
+        let mut surface = vec![];
+        let mut normal = vec![];
+        for elem in &elems {
+            let (x1, y1, _) = vertices[elem[0]];
+            let (x2, y2, _) = vertices[elem[1]];
+            let (x3, y3, _) = vertices[elem[2]];
+            let s = 0.5 * ((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1));
+            assert!(s > 0.0);
+            surface.push(s.abs());
+        }
+        let mut min_length = std::f64::MAX;
+        for edge in &edges {
+            let (x1, y1, _) = vertices[edge[0]];
+            let (x2, y2, _) = vertices[edge[1]];
+            let ll = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+            length.push(ll);
+            if ll < min_length {
+                min_length = ll;
+            }
+            let nx = y2 - y1;
+            let ny = x1 - x2;
+            let n = (nx * nx + ny * ny).sqrt();
+            normal.push((nx / n, ny / n));
+        }
+        let mut xmin = std::f64::MAX;
+        let mut xmax = std::f64::MIN;
+        let mut ymin = std::f64::MAX;
+        let mut ymax = std::f64::MIN;
+        for (x, y, _) in &vertices {
+            if *x < xmin {
+                xmin = *x;
+            }
+            if *x > xmax {
+                xmax = *x;
+            }
+            if *y < ymin {
+                ymin = *y;
+            }
+            if *y > ymax {
+                ymax = *y;
+            }
+        }
+
         Mesh2D {
             nbnodes: vertices.len(),
             nbelems: elems.len(),
@@ -46,10 +90,121 @@ impl Mesh2D {
             elem2elem,
             edge2elem,
             edge2edge,
+            length,
+            surface,
+            normal,
+            bounding_box: (xmin, xmax, ymin, ymax),
+            min_length,
         }
     }
 
-    pub fn make_periodic(&mut self, dir: PeriodicDir) {}
+    // this function may fail
+    pub fn make_periodic(&mut self) -> Result<(), ()> {
+        let (xmin, _, ymin, _) = self.bounding_box;
+        let h = self.min_length / 3.;
+        // create a hashmap of the boundary edges
+        // key = ((intx,inty),(nx,ny)) value = num of the edge
+        // (intx,inty) are the coordinates of the middle of the edge converted to an integer
+        // on a grid of step h
+        // (nx,ny) = (1,0), (0,1), (-1,0), (0,-1) are the normal to the edges converted also to integers
+        let mut dx = std::i32::MIN;
+        let mut dy = std::i32::MIN;
+        let mut border_edges = std::collections::HashMap::new();
+        for ((i, edge), edge2elem) in self.edges.iter().enumerate().zip(self.edge2elem.iter()) {
+            // the edge is a boundary edge
+            match edge2elem {
+                (_, Dirichlet | Neumann) => {
+                    let (x1, y1, _) = self.vertices[edge[0]];
+                    let (x2, y2, _) = self.vertices[edge[1]];
+                    let (vx, vy) = self.normal[i];
+                    let (vx, vy) = (vx.round() as i32, vy.round() as i32);
+                    let intx = ((x1 + x2) / 2. / h).round() as i32;
+                    let inty = ((y1 + y2) / 2. / h).round() as i32;
+                    if dx < intx {
+                        dx = intx;
+                    }
+                    if dy < inty {
+                        dy = inty;
+                    }
+                    border_edges.insert(((intx, inty), (vx, vy)), i);
+                }
+                _ => {}
+            }
+        }
+        println!("{:?}", border_edges);
+        println!("nbelems={}", self.nbelems);
+        println!("dx = {}, dy = {}", dx, dy);
+        // create a list of matching periodic edges
+        // the first edge in the pair corresponds to a negative normal
+        let mut paired_edges: Vec<(usize, usize)> = vec![];
+        for ((intx, inty), (nx, ny)) in border_edges.keys() {
+            if *nx == -1 {
+                // find the matching edge with nx = 1
+                let edge = border_edges.get(&((intx + dx, *inty), (1, 0)));
+                match edge {
+                    Some(edge) => {
+                        paired_edges.push((border_edges[&((*intx, *inty), (-1, 0))], *edge));
+                    }
+                    None => {
+                        panic!("No matching right edge found");
+                    }
+                }
+            }
+            if *ny == -1 {
+                // find the matching edge with ny = 1
+                let edge = border_edges.get(&((*intx, inty + dy), (0, 1)));
+                match edge {
+                    Some(edge) => {
+                        paired_edges.push((border_edges[&((*intx, *inty), (0, -1))], *edge));
+                    }
+                    None => {
+                        panic!("No matching top edge found");
+                    }
+                }
+            }
+        }
+        println!("{:?}", paired_edges);
+        let new_nbedges = self.nbedges - paired_edges.len();
+        // update conserved edges
+        for (i, j) in paired_edges {
+            self.edge2elem[j] = (self.edge2elem[j].0, Elem(self.edge2elem[i].0));
+            self.edge2edge[j] = (self.edge2edge[j].0, LocEdge(self.edge2edge[i].0));
+            println!("update edge {} with edge {}", j, i);
+        }
+        let mut new_edges = vec![];
+        let mut new_edge2elem = vec![];
+        let mut new_edge2edge = vec![];
+        let mut new_normals = vec![];
+        let mut new_length = vec![];
+
+        for (i,edge) in self.edges.iter().enumerate() {
+            match self.edge2elem[i].1 {
+                Elem(_) => {
+                    new_edges.push(*edge);
+                    new_edge2elem.push(self.edge2elem[i].clone());
+                    new_edge2edge.push(self.edge2edge[i].clone());
+                    new_normals.push(self.normal[i]);
+                    new_length.push(self.length[i]);
+                }
+                _ => {
+                    println!("skip edge {}", i);
+                }
+            }
+
+        }
+        self.edges = new_edges;
+        self.edge2elem = new_edge2elem;
+        self.edge2edge = new_edge2edge;
+        self.normal = new_normals;
+        self.length = new_length;
+        self.nbedges = new_nbedges;
+
+        assert_eq!(self.nbedges, self.edges.len());
+
+
+
+        Ok(())
+    }
 
     // save the mesh in a gmsh file format legacy 2
     pub fn save_gmsh2(&self, filename: &str) {
@@ -98,11 +253,19 @@ impl Mesh2D {
         //     s.push_str(&format!("{} {}\n", i + 1, toplot(*x, *y)));
         // }
         // s.push_str("$EndNodeData\n");
-        s.push_str(format!("$ElementNodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n", nbtri).as_str());
+        s.push_str(
+            format!(
+                "$ElementNodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n",
+                nbtri
+            )
+            .as_str(),
+        );
         for (i, elem) in self.elems.iter().enumerate() {
             s.push_str(&format!("{} 6 ", i + 1));
             for node in elem {
-                s.push_str(&format!("{} ", toplot(self.vertices[*node].0, self.vertices[*node].1)));
+                // s.push_str(&format!("{} ", toplot(self.vertices[*node].0, self.vertices[*node].1)));
+                // plot elem surface
+                s.push_str(&format!("{} ", self.surface[i]));
             }
             s.push_str("\n");
         }
@@ -428,6 +591,12 @@ mod tests {
     fn test_save_gmsh() {
         let mut mesh = Mesh2D::new("geo/square4.msh");
         mesh.save_gmsh2("geo/square_test.msh");
+    }
+
+    #[test]
+    fn test_make_periodic() {
+        let mut mesh = Mesh2D::new("geo/square4.msh");
+        mesh.make_periodic().unwrap();
     }
 
     #[test]
