@@ -3,9 +3,10 @@
 
 #[derive(Debug, Clone)]
 enum BoundaryType {
-    Dirichlet,      // imposed data
-    Neumann,        // wall
-    Elem(usize),    // internal boundary: elem number
+    Dirichlet, // imposed data
+    #[allow(dead_code)]
+    Neumann, // wall
+    Elem(usize), // internal boundary: elem number
     LocEdge(usize), // local edge number
 }
 
@@ -99,7 +100,8 @@ impl Mesh2D {
     }
 
     // this function may fail
-    pub fn make_periodic(&mut self) -> Result<(), ()> {
+    // the error contains a static str
+    pub fn make_periodic(&mut self) -> Result<(), &'static str> {
         let (xmin, _, ymin, _) = self.bounding_box;
         let h = self.min_length / 3.;
         // create a hashmap of the boundary edges
@@ -112,23 +114,20 @@ impl Mesh2D {
         let mut border_edges = std::collections::HashMap::new();
         for ((i, edge), edge2elem) in self.edges.iter().enumerate().zip(self.edge2elem.iter()) {
             // the edge is a boundary edge
-            match edge2elem {
-                (_, Dirichlet | Neumann) => {
-                    let (x1, y1, _) = self.vertices[edge[0]];
-                    let (x2, y2, _) = self.vertices[edge[1]];
-                    let (vx, vy) = self.normal[i];
-                    let (vx, vy) = (vx.round() as i32, vy.round() as i32);
-                    let intx = ((x1 + x2) / 2. / h).round() as i32;
-                    let inty = ((y1 + y2) / 2. / h).round() as i32;
-                    if dx < intx {
-                        dx = intx;
-                    }
-                    if dy < inty {
-                        dy = inty;
-                    }
-                    border_edges.insert(((intx, inty), (vx, vy)), i);
+            if let (_, Dirichlet | Neumann) = edge2elem {
+                let (x1, y1, _) = self.vertices[edge[0]];
+                let (x2, y2, _) = self.vertices[edge[1]];
+                let (vx, vy) = self.normal[i];
+                let (vx, vy) = (vx.round() as i32, vy.round() as i32);
+                let intx = (((x1 + x2) - xmin) / 2. / h).round() as i32;
+                let inty = (((y1 + y2) / 2. - ymin) / h).round() as i32;
+                if dx < intx {
+                    dx = intx;
                 }
-                _ => {}
+                if dy < inty {
+                    dy = inty;
+                }
+                border_edges.insert(((intx, inty), (vx, vy)), i);
             }
         }
         println!("{:?}", border_edges);
@@ -140,27 +139,18 @@ impl Mesh2D {
         for ((intx, inty), (nx, ny)) in border_edges.keys() {
             if *nx == -1 {
                 // find the matching edge with nx = 1
-                let edge = border_edges.get(&((intx + dx, *inty), (1, 0)));
-                match edge {
-                    Some(edge) => {
-                        paired_edges.push((border_edges[&((*intx, *inty), (-1, 0))], *edge));
-                    }
-                    None => {
-                        panic!("No matching right edge found");
-                    }
-                }
+                let edge = border_edges
+                    .get(&((intx + dx, *inty), (1, 0)))
+                    .ok_or("periodic right edge not found")?;
+                paired_edges.push((border_edges[&((*intx, *inty), (-1, 0))], *edge));
             }
             if *ny == -1 {
                 // find the matching edge with ny = 1
-                let edge = border_edges.get(&((*intx, inty + dy), (0, 1)));
-                match edge {
-                    Some(edge) => {
-                        paired_edges.push((border_edges[&((*intx, *inty), (0, -1))], *edge));
-                    }
-                    None => {
-                        panic!("No matching top edge found");
-                    }
-                }
+                let edge = border_edges
+                    .get(&((*intx, inty + dy), (0, 1)))
+                    .ok_or("periodic top edge not found")?;
+
+                paired_edges.push((border_edges[&((*intx, *inty), (0, -1))], *edge));
             }
         }
         println!("{:?}", paired_edges);
@@ -177,7 +167,7 @@ impl Mesh2D {
         let mut new_normals = vec![];
         let mut new_length = vec![];
 
-        for (i,edge) in self.edges.iter().enumerate() {
+        for (i, edge) in self.edges.iter().enumerate() {
             match self.edge2elem[i].1 {
                 Elem(_) => {
                     new_edges.push(*edge);
@@ -190,7 +180,6 @@ impl Mesh2D {
                     println!("skip edge {}", i);
                 }
             }
-
         }
         self.edges = new_edges;
         self.edge2elem = new_edge2elem;
@@ -200,8 +189,6 @@ impl Mesh2D {
         self.nbedges = new_nbedges;
 
         assert_eq!(self.nbedges, self.edges.len());
-
-
 
         Ok(())
     }
@@ -231,7 +218,7 @@ impl Mesh2D {
             for node in edge {
                 s.push_str(&format!("{} ", node + 1));
             }
-            s.push_str("\n");
+            s.push('\n');
         }
         // block of triangles
         for (i, elem) in self.elems.iter().enumerate() {
@@ -239,7 +226,7 @@ impl Mesh2D {
             for node in elem {
                 s.push_str(&format!("{} ", node + 1));
             }
-            s.push_str("\n");
+            s.push('\n');
         }
 
         s.push_str("$EndElements\n");
@@ -263,11 +250,14 @@ impl Mesh2D {
         for (i, elem) in self.elems.iter().enumerate() {
             s.push_str(&format!("{} 6 ", i + 1));
             for node in elem {
-                // s.push_str(&format!("{} ", toplot(self.vertices[*node].0, self.vertices[*node].1)));
-                // plot elem surface
-                s.push_str(&format!("{} ", self.surface[i]));
+                s.push_str(&format!(
+                    "{} ",
+                    self.surface[i] + toplot(self.vertices[*node].0, self.vertices[*node].1)
+                ));
+                //plot elem surface
+                //s.push_str(&format!("{} ", self.surface[i]));
             }
-            s.push_str("\n");
+            s.push('\n');
         }
 
         file.write_all(s.as_bytes()).unwrap();
@@ -308,9 +298,9 @@ impl Mesh2D {
 
     // write the mesh in a gmsh file
     // with a possible DG field to plot
-    fn plot_gmsh(&self, filename: &str, field: Option<Vec<f64>>) {
-        todo!();
-    }
+    // fn plot_gmsh(&self, filename: &str, field: Option<Vec<f64>>) {
+    //     todo!();
+    // }
 }
 
 use crate::BoundaryType::Dirichlet;
@@ -401,13 +391,11 @@ use nom::{
     combinator::map,
     error::{
         Error,
-        ErrorKind::{self, Tag},
+        ErrorKind::{self},
     },
-    multi::{fold_many_m_n, many0, many1},
-    sequence::{delimited, preceded, terminated},
-    Err,
+    multi::fold_many_m_n,
+    sequence::{preceded, terminated},
     IResult,
-    Parser,
 };
 //use nom;
 
@@ -451,20 +439,20 @@ fn parse_line_f64s(input: &str) -> IResult<&str, Vec<f64>> {
 
 fn parse_nodes_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
     map(parse_line_usizes, |v| {
-        let numblocks = v[0];
-        let numnodes = v[1];
-        let minnode = v[2];
-        let maxnode = v[3];
+        // let numblocks = v[0];
+        // let numnodes = v[1];
+        // let minnode = v[2];
+        // let maxnode = v[3];
         (v[0], v[1], v[2], v[3])
     })(input)
 }
 
 fn parse_nodes_block_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
     map(parse_line_usizes, |v| {
-        let edim = v[0];
-        let etag = v[1];
-        let is_param = v[2];
-        let numnodes = v[3];
+        // let edim = v[0];
+        // let etag = v[1];
+        // let is_param = v[2];
+        // let numnodes = v[3];
         (v[0], v[1], v[2], v[3])
     })(input)
 }
@@ -514,20 +502,20 @@ fn parse_nodes(input: &str) -> IResult<&str, (Vec<usize>, Vec<(f64, f64, f64)>)>
 
 fn parse_elems_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
     map(parse_line_usizes, |v| {
-        let numblocks = v[0];
-        let numelems = v[1];
-        let minelem = v[2];
-        let maxelem = v[3];
+        // let numblocks = v[0];
+        // let numelems = v[1];
+        // let minelem = v[2];
+        // let maxelem = v[3];
         (v[0], v[1], v[2], v[3])
     })(input)
 }
 
 fn parse_elems_block_header(input: &str) -> IResult<&str, (usize, usize, usize, usize)> {
     map(parse_line_usizes, |v| {
-        let edim = v[0];
-        let etag = v[1];
-        let elem_type = v[2];
-        let nbelems = v[3];
+        // let edim = v[0];
+        // let etag = v[1];
+        // let elem_type = v[2];
+        // let nbelems = v[3];
         (v[0], v[1], v[2], v[3])
     })(input)
 }
@@ -571,7 +559,7 @@ fn parse_elems(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
 }
 
 fn parse_nodes_elems(input: &str) -> IResult<&str, (Vec<(f64, f64, f64)>, Vec<Vec<usize>>)> {
-    let (rest, (num, coord)) = parse_nodes(input)?;
+    let (rest, (_num, coord)) = parse_nodes(input)?;
     let (rest, elem) = parse_elems(rest)?;
     Ok((rest, (coord, elem)))
 }
@@ -589,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_save_gmsh() {
-        let mut mesh = Mesh2D::new("geo/square4.msh");
+        let mesh = Mesh2D::new("geo/square4.msh");
         mesh.save_gmsh2("geo/square_test.msh");
     }
 
