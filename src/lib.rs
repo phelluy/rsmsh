@@ -121,6 +121,10 @@ impl Mesh2D {
         self.surface[i]
     }
 
+    pub fn get_vois(&self, i: usize, loc_edge: usize) -> BoundaryType {
+        self.elem2elem[i][loc_edge].clone()
+    }
+
     // get length of edge loc_edge of element i
     pub fn get_length(&self, i: usize, loc_edge: usize) -> f64 {
         let (i1, i2) = (self.elems[i][loc_edge], self.elems[i][(loc_edge + 1) % 3]);
