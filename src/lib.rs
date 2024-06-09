@@ -81,10 +81,6 @@ impl Mesh2D {
             }
         }
 
-        fn get_nbelems(&self) -> usize {
-            self.nbelems
-        }
-
         Mesh2D {
             nbnodes: vertices.len(),
             nbelems: elems.len(),
@@ -101,6 +97,10 @@ impl Mesh2D {
             bounding_box: (xmin, xmax, ymin, ymax),
             min_length,
         }
+    }
+
+    pub fn get_nbelems(&self) -> usize {
+        self.nbelems
     }
 
     // this function may fail
