@@ -128,7 +128,6 @@ impl Mesh2D {
         ((x2.0 - x1.0).powi(2) + (x2.1 - x1.1).powi(2)).sqrt()
     }
 
-
     // this function may fail
     // the error contains a static str
     pub fn make_periodic(&mut self) -> Result<(), &'static str> {
@@ -224,7 +223,7 @@ impl Mesh2D {
     }
 
     // save the mesh in a gmsh file format legacy 2
-    pub fn save_gmsh2(&self, filename: &str) {
+    pub fn save_gmsh2(&self, filename: &str, toplot: Option<Vec<f64>>) {
         let mut file = std::fs::File::create(filename).unwrap();
         let mut s = String::new();
         s.push_str("$MeshFormat\n2.2 0 8\n$EndMeshFormat\n");
@@ -261,33 +260,39 @@ impl Mesh2D {
 
         s.push_str("$EndElements\n");
         // save values
-        fn toplot(x: f64, y: f64) -> f64 {
-            x * x + y * y
-        }
+        // fn toplot(x: f64, y: f64) -> f64 {
+        //     x * x + y * y
+        // }
 
         // s.push_str(format!("$NodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n", nbnodes).as_str());
         // for (i, (x, y, _)) in self.vertices.iter().enumerate() {
         //     s.push_str(&format!("{} {}\n", i + 1, toplot(*x, *y)));
         // }
         // s.push_str("$EndNodeData\n");
-        s.push_str(
-            format!(
-                "$ElementNodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n",
-                nbtri
-            )
-            .as_str(),
-        );
-        for (i, elem) in self.elems.iter().enumerate() {
-            s.push_str(&format!("{} 6 ", i + 1));
-            for node in elem {
-                s.push_str(&format!(
-                    "{} ",
-                    self.surface[i] + toplot(self.vertices[*node].0, self.vertices[*node].1)
-                ));
-                //plot elem surface
-                //s.push_str(&format!("{} ", self.surface[i]));
+
+        match toplot {
+            Some(toplot) => {
+                s.push_str(
+                    format!(
+                        "$ElementNodeData\n1\n\"field\"\n1\n0.0\n3\n0\n1\n{}\n",
+                        nbtri
+                    )
+                    .as_str(),
+                );
+                for (i, elem) in self.elems.iter().enumerate() {
+                    s.push_str(&format!("{} 6 ", i + 1));
+                    for node in elem {
+                        s.push_str(&format!(
+                            "{} ",
+                            toplot[i]
+                        ));
+                        //plot elem surface
+                        //s.push_str(&format!("{} ", self.surface[i]));
+                    }
+                    s.push('\n');
+                }
             }
-            s.push('\n');
+            None => {}
         }
 
         file.write_all(s.as_bytes()).unwrap();
@@ -610,7 +615,7 @@ mod tests {
         let mesh = Mesh2D::new("geo/square.msh");
         let center = mesh.get_center(0);
         println!("{:?}", center);
-        assert!((center.0 -0.5).abs()+ (center.1-0.5/3.).abs() < 1e-12);
+        assert!((center.0 - 0.5).abs() + (center.1 - 0.5 / 3.).abs() < 1e-12);
     }
 
     #[test]
@@ -632,7 +637,10 @@ mod tests {
     #[test]
     fn test_save_gmsh() {
         let mesh = Mesh2D::new("geo/square4.msh");
-        mesh.save_gmsh2("geo/square_test.msh");
+        let nbel = mesh.get_nbelems();
+        let toplot = (0..nbel).map(|x| x as f64).collect();
+        mesh.save_gmsh2("geo/square_test.msh", Some(toplot));
+        mesh.save_gmsh2("geo/void_square_test.msh", None);
     }
 
     #[test]
