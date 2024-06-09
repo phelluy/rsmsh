@@ -117,6 +117,17 @@ impl Mesh2D {
         (x / w, y / w)
     }
 
+    pub fn get_surf(&self, i: usize) -> f64 {
+        self.surface[i]
+    }
+
+    // get length of edge loc_edge of element i
+    pub fn get_length(&self, i: usize, loc_edge: usize) -> f64 {
+        let (i1, i2) = (self.elems[i][loc_edge], self.elems[i][(loc_edge + 1) % 3]);
+        let (x1, x2) = (self.vertices[i1], self.vertices[i2]);
+        ((x2.0 - x1.0).powi(2) + (x2.1 - x1.1).powi(2)).sqrt()
+    }
+
 
     // this function may fail
     // the error contains a static str
@@ -600,6 +611,22 @@ mod tests {
         let center = mesh.get_center(0);
         println!("{:?}", center);
         assert!((center.0 -0.5).abs()+ (center.1-0.5/3.).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_surf() {
+        let mesh = Mesh2D::new("geo/square.msh");
+        let surf = mesh.get_surf(0);
+        println!("{:?}", surf);
+        assert!((surf - 0.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_length() {
+        let mesh = Mesh2D::new("geo/square.msh");
+        let length = mesh.get_length(0, 0);
+        println!("{:?}", length);
+        assert!((length - 1.0).abs() < 1e-12);
     }
 
     #[test]
