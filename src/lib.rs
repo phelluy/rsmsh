@@ -10,7 +10,7 @@ enum BoundaryType {
     LocEdge(usize), // local edge number
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mesh2D {
     nbnodes: usize,                        // number of nodes
     nbelems: usize,                        // number of elements
