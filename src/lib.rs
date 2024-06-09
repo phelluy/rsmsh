@@ -128,6 +128,15 @@ impl Mesh2D {
         ((x2.0 - x1.0).powi(2) + (x2.1 - x1.1).powi(2)).sqrt()
     }
 
+    // the perimeter of elem i
+    pub fn get_perimeter(&self, i: usize) -> f64 {
+        let mut p = 0.0;
+        for j in 0..3 {
+            p += self.get_length(i, j);
+        }
+        p
+    }
+
     // this function may fail
     // the error contains a static str
     pub fn make_periodic(&mut self) -> Result<(), &'static str> {
@@ -632,6 +641,14 @@ mod tests {
         let length = mesh.get_length(0, 0);
         println!("{:?}", length);
         assert!((length - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_perimeter() {
+        let mesh = Mesh2D::new("geo/square.msh");
+        let perimeter = mesh.get_perimeter(0);
+        println!("{:?}", perimeter);
+        assert!((perimeter - 1.-(2f64).sqrt()) < 1e-12);
     }
 
     #[test]
