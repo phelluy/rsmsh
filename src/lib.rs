@@ -2,7 +2,7 @@
 /// rsmsh: a Rust library for managing DG meshes
 
 #[derive(Debug, Clone)]
-enum BoundaryType {
+pub enum BoundaryType {
     Dirichlet, // imposed data
     #[allow(dead_code)]
     Neumann, // wall
