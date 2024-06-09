@@ -103,6 +103,21 @@ impl Mesh2D {
         self.nbelems
     }
 
+    pub fn get_center(&self, i: usize) -> (f64, f64) {
+        let elem = &self.elems[i];
+        let mut x = 0.0;
+        let mut y = 0.0;
+        let mut w = 0.0;
+        for node in elem {
+            let (x1, y1, _) = self.vertices[*node];
+            x += x1;
+            y += y1;
+            w += 1.0;
+        }
+        (x / w, y / w)
+    }
+
+
     // this function may fail
     // the error contains a static str
     pub fn make_periodic(&mut self) -> Result<(), &'static str> {
@@ -577,6 +592,14 @@ mod tests {
         println!("{:?}", mesh);
         assert_eq!(mesh.vertices.len(), 13);
         assert_eq!(mesh.elems.len(), 4);
+    }
+
+    #[test]
+    fn test_center() {
+        let mesh = Mesh2D::new("geo/square.msh");
+        let center = mesh.get_center(0);
+        println!("{:?}", center);
+        assert!((center.0 -0.5).abs()+ (center.1-0.5/3.).abs() < 1e-12);
     }
 
     #[test]
