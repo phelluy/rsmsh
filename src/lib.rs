@@ -81,6 +81,10 @@ impl Mesh2D {
             }
         }
 
+        fn get_nbelems(&self) -> usize {
+            self.nbelems
+        }
+
         Mesh2D {
             nbnodes: vertices.len(),
             nbelems: elems.len(),
