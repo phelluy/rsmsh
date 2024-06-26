@@ -133,8 +133,9 @@ impl Mesh2D {
     }
 
     // get outward unit normal to edge loc_edge of element i
-    pub fn get_normal(&self, i: usize, loc_edge: usize) -> (f64, f64) {
-        self.normal[self.edge2edge[self.elems[i][loc_edge]].0]
+    pub fn get_normal(&self, i: usize, loc_edge: usize) -> [f64; 2]{
+        let vn = self.normal[self.edge2edge[self.elems[i][loc_edge]].0];
+        [vn.0, vn.1]
     }
 
     // the perimeter of elem i
