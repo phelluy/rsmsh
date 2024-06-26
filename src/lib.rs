@@ -183,7 +183,8 @@ impl Mesh2D {
                 border_edges.insert(((intx, inty), (vx, vy)), i);
             }
         }
-        println!("{:?}", border_edges);
+        //println!("{:?}", border_edges);
+        println!("Making the mesh periodic");
         println!("nbelems={}", self.nbelems);
         println!("dx = {}, dy = {}", dx, dy);
         // create a list of matching periodic edges
@@ -206,13 +207,13 @@ impl Mesh2D {
                 paired_edges.push((border_edges[&((*intx, *inty), (0, -1))], *edge));
             }
         }
-        println!("{:?}", paired_edges);
+        //println!("{:?}", paired_edges);
         let new_nbedges = self.nbedges - paired_edges.len();
         // update conserved edges
         for (i, j) in paired_edges {
             self.edge2elem[j] = (self.edge2elem[j].0, Elem(self.edge2elem[i].0));
             self.edge2edge[j] = (self.edge2edge[j].0, LocEdge(self.edge2edge[i].0));
-            println!("update edge {} with edge {}", j, i);
+            //println!("update edge {} with edge {}", j, i);
         }
         let mut new_edges = vec![];
         let mut new_edge2elem = vec![];
@@ -220,6 +221,7 @@ impl Mesh2D {
         let mut new_normals = vec![];
         let mut new_length = vec![];
 
+        let mut skipped_edges = 0;
         for (i, edge) in self.edges.iter().enumerate() {
             match self.edge2elem[i].1 {
                 Elem(_) => {
@@ -230,10 +232,12 @@ impl Mesh2D {
                     new_length.push(self.length[i]);
                 }
                 _ => {
-                    println!("skip edge {}", i);
+                    //println!("skip edge {}", i);
+                    skipped_edges += 1;
                 }
             }
         }
+        println!("skipped edges = {}", skipped_edges);
         self.edges = new_edges;
         self.edge2elem = new_edge2elem;
         self.edge2edge = new_edge2edge;
