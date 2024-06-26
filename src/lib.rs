@@ -28,6 +28,7 @@ pub struct Mesh2D {
     min_length: f64,                       // minimum edge length
 }
 
+use core::panic;
 use std::io::Write;
 use std::vec;
 
@@ -133,7 +134,7 @@ impl Mesh2D {
     }
 
     // get outward unit normal to edge loc_edge of element i
-    pub fn get_normal(&self, i: usize, loc_edge: usize) -> [f64; 2]{
+    pub fn get_normal(&self, i: usize, loc_edge: usize) -> [f64; 2] {
         let vn = self.normal[self.edge2edge[self.elems[i][loc_edge]].0];
         [vn.0, vn.1]
     }
@@ -236,6 +237,23 @@ impl Mesh2D {
         self.length = new_length;
         self.nbedges = new_nbedges;
 
+        // finally, update elem2elem
+        for ((i1, i2), (iloc1, iloc2)) in self.edge2elem.iter().zip(self.edge2edge.iter()) {
+            match i2 {
+                Elem(i2) => {
+                    self.elem2elem[*i1][*iloc1] = Elem(*i2);
+                    if let LocEdge(iloc) = iloc2 {
+                        self.elem2elem[*i2][*iloc] = Elem(*i1);
+                    } else {
+                        panic!("unexpected boundary type");
+                    }
+                }
+                _ => {
+                    panic!("unexpected boundary type");
+                }
+            }
+        }
+
         assert_eq!(self.nbedges, self.edges.len());
 
         Ok(())
@@ -301,10 +319,7 @@ impl Mesh2D {
                 for (i, elem) in self.elems.iter().enumerate() {
                     s.push_str(&format!("{} 6 ", i + 1));
                     for node in elem {
-                        s.push_str(&format!(
-                            "{} ",
-                            toplot[i]
-                        ));
+                        s.push_str(&format!("{} ", toplot[i]));
                         //plot elem surface
                         //s.push_str(&format!("{} ", self.surface[i]));
                     }
@@ -658,7 +673,7 @@ mod tests {
         let mesh = Mesh2D::new("geo/square.msh");
         let perimeter = mesh.get_perimeter(0);
         println!("{:?}", perimeter);
-        assert!((perimeter - 1.-(2f64).sqrt()) < 1e-12);
+        assert!((perimeter - 1. - (2f64).sqrt()) < 1e-12);
     }
 
     #[test]
@@ -674,6 +689,7 @@ mod tests {
     fn test_make_periodic() {
         let mut mesh = Mesh2D::new("geo/square4.msh");
         mesh.make_periodic().unwrap();
+        println!("{:?}", mesh);
     }
 
     #[test]
