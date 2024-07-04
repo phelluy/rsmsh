@@ -143,6 +143,13 @@ impl Mesh2D {
         [nx / n, ny / n]
     }
 
+    pub fn get_edge_center(&self, iel: usize, iloc: usize) -> (f64, f64) {
+        let (i1,i2) = (self.elems[iel][iloc], self.elems[iel][(iloc+1)%3]);
+        let (x1, y1, _) = self.vertices[i1];
+        let (x2, y2, _) = self.vertices[i2];
+        ((x1+x2)/2., (y1+y2)/2.)
+    }
+
     // the perimeter of elem i
     pub fn get_perimeter(&self, i: usize) -> f64 {
         let mut p = 0.0;
