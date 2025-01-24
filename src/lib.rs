@@ -733,7 +733,7 @@ mod tests {
 
     #[test]
     fn test_make_periodic() {
-        let mut mesh = Mesh2D::new("geo/square.msh");
+        let mut mesh = Mesh2D::new("geo/square4.msh");
         mesh.make_periodic().unwrap();
         println!("{:?}", mesh);
         mesh.check();
