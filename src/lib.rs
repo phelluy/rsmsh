@@ -274,6 +274,38 @@ impl Mesh2D {
         Ok(())
     }
 
+    fn is_neumann(vnorm : [f64; 2], xy: [f64; 2]) -> bool {
+        let nx = vnorm[0];
+        let ny = vnorm[1];
+        let x = xy[0];
+        let y = xy[1];
+        if (nx+1.).abs() < 1e-12 {
+            true
+        } else {
+            false
+        }
+    }
+
+    // search the dirichlet edges and change them into neumann if 
+    // hte is_neumann function returns true
+    pub fn select_neumann_bc(&mut self) {
+        for (i, edge) in self.edges.iter().enumerate() {
+            let (iel, bc_type) = self.edge2elem[i].clone();
+            match bc_type {
+                Dirichlet => {
+                    let (x1, y1, _) = self.vertices[edge[0]];
+                    let (x2, y2, _) = self.vertices[edge[1]];
+                    let [x,y] = [(x1+x2)/2., (y1+y2)/2.];
+                    let (nx, ny) = self.normal[i];
+                    if Mesh2D::is_neumann([nx, ny], [x, y]) {
+                        self.edge2elem[i] = (iel, Neumann);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // save the mesh in a gmsh file format legacy 2
     pub fn save_gmsh2(&self, filename: &str, toplot: Option<Vec<f64>>) {
         let mut file = std::fs::File::create(filename).unwrap();
@@ -737,6 +769,13 @@ mod tests {
         mesh.make_periodic().unwrap();
         println!("{:?}", mesh);
         mesh.check();
+        println!("{:?}", mesh);
+    }
+
+    #[test]
+    fn test_select_neumann_bc() {
+        let mut mesh = Mesh2D::new("geo/square.msh");
+        mesh.select_neumann_bc();
         println!("{:?}", mesh);
     }
 
