@@ -144,10 +144,10 @@ impl Mesh2D {
     }
 
     pub fn get_edge_center(&self, iel: usize, iloc: usize) -> (f64, f64) {
-        let (i1,i2) = (self.elems[iel][iloc], self.elems[iel][(iloc+1)%3]);
+        let (i1, i2) = (self.elems[iel][iloc], self.elems[iel][(iloc + 1) % 3]);
         let (x1, y1, _) = self.vertices[i1];
         let (x2, y2, _) = self.vertices[i2];
-        ((x1+x2)/2., (y1+y2)/2.)
+        ((x1 + x2) / 2., (y1 + y2) / 2.)
     }
 
     // the perimeter of elem i
@@ -374,10 +374,41 @@ impl Mesh2D {
                         let b1 = self.elems[ie1][(iloc1 + 1) % 3];
                         let b2 = self.elems[ie2][iloc2];
                         let a2 = self.elems[ie2][(iloc2 + 1) % 3];
-                        assert!(a1 == a2 && b1 == b2);
+                        // get coords of a1
+                        let (x1, y1, _) = self.vertices[a1];
+                        let (x2, y2, _) = self.vertices[a2];
+                        // the two points need to be the same modulo periodicity
+                        if a1 != a2 {
+                            println!("x1 y1 = {:?} {:?} x2 y2 = {:?} {:?}", x1, y1, x2, y2);
+                            assert!((x1-x2).abs() < 1e-10 || (y1-y2).abs() < 1e-10);
+                        }
+                        let (x1, y1, _) = self.vertices[b1];
+                        let (x2, y2, _) = self.vertices[b2];
+                        // the two points need to be the same modulo periodicity
+                        if b1 != b2 {
+                            println!("x1 y1 = {:?} {:?} x2 y2 = {:?} {:?}", x1, y1, x2, y2);
+                            assert!((x1-x2).abs() < 1e-10 || (y1-y2).abs() < 1e-10);
+                            println!("ie1 = {:?} ie2 = {:?}", ie1, ie2);
+                            println!("iloc1 = {:?} iloc2 = {:?}", iloc1, iloc2);
+                            println!("a1 = {:?} a2 = {:?}", a1, a2);
+                            println!("b1 = {:?} b2 = {:?}", b1, b2);
+                            //panic!();
+                        }
                     }
                 }
             });
+        // check that integral of normal on the boundary is zero
+        for iel in 0..self.nbelems {
+            let mut sum = [0.0, 0.0];
+            for iloc in 0..3 {
+                let length = self.get_length(iel, iloc);
+                let vn = self.get_normal(iel, iloc);
+                sum[0] += vn[0] * length;
+                sum[1] += vn[1] * length;
+            }
+            assert!(sum[0].abs() < 1e-12);
+            assert!(sum[1].abs() < 1e-12);
+        }
     }
 
     // write the mesh in a gmsh file
@@ -702,8 +733,10 @@ mod tests {
 
     #[test]
     fn test_make_periodic() {
-        let mut mesh = Mesh2D::new("geo/square4.msh");
+        let mut mesh = Mesh2D::new("geo/square.msh");
         mesh.make_periodic().unwrap();
+        println!("{:?}", mesh);
+        mesh.check();
         println!("{:?}", mesh);
     }
 
